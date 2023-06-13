@@ -15,7 +15,8 @@
             >
             <div class="mt-1 relative rounded-md shadow-md">
               <input
-                v-model="ticker"
+                v-model="tickerName"
+                v-on:keydown.enter="addTicker"
                 type="text"
                 name="wallet"
                 id="wallet"
@@ -24,17 +25,12 @@
               />
             </div>
             <div class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap">
-              <span class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">
-                BTC
-              </span>
-              <span class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">
-                DOGE
-              </span>
-              <span class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">
-                BCH
-              </span>
-              <span class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">
-                CHD
+              <span
+                class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
+                @click="e=>tickerName=e.target.innerHTML"
+                v-for="dtv in defaultTickerValues"
+                :key="dtv.id">
+                {{dtv}}
               </span>
             </div>
             <div class="text-sm text-red-600"
@@ -44,7 +40,7 @@
         <button
           type="button"
           class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-          v-on:click="addTicker"
+          @click="addTicker"
         >
           <!-- Heroicon name: solid/mail -->
           <svg
@@ -70,7 +66,9 @@
           <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
             <div class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
                 v-for="t in tickers"
-                v-bind:key="t.id">
+                :key="t.id"
+                @click="select(t)"
+                >
               <div class="px-4 py-5 sm:p-6 text-center">
                 <dt class="text-sm font-medium text-gray-500 truncate">
                   {{t.name}} - USD
@@ -81,8 +79,8 @@
               </div>
               <div class="w-full border-t border-gray-200"></div>
               <button
+                @click.stop="deleteTicker(t)"
                 class="flex items-center justify-center font-medium w-full bg-gray-100 px-4 py-4 sm:px-6 text-md text-gray-500 hover:text-gray-600 hover:bg-gray-200 hover:opacity-20 transition-all focus:outline-none"
-                v-on:click="deleteTicker(t)"
               >
                 <svg
                   class="h-5 w-5"
@@ -104,27 +102,26 @@
         </template>
         
       <!-- Диаграмма -->
-      <section class="relative">
+      <section
+        class="relative"
+        v-if="selectedTicker"
+      >
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
-          VUE - USD
+          {{selectedTicker.name}} - USD
         </h3>
         <div class="flex items-end border-gray-600 border-b border-l h-64">
           <div
-            class="bg-purple-800 border w-10 h-24"
+            v-for="(g, idx) in normalizeGraph()"
+            :key="idx"
+            class="bg-purple-800 border w-10"
+            :style="{ height: `${g}%`}"
           ></div>
-          <div
-            class="bg-purple-800 border w-10 h-32"
-          ></div>
-          <div
-            class="bg-purple-800 border w-10 h-48"
-          ></div>
-          <div
-            class="bg-purple-800 border w-10 h-16"
-          ></div>
+          
         </div>
         <button
           type="button"
           class="absolute top-0 right-0"
+          @click="select(null)"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -159,31 +156,52 @@ export default {
   name: 'App',
   data() {
     return {
-      ticker: "",
-      tickers: [
-        {name:"ticker1", value:"val1"},
-        {name:"ticker2", value:"val2"},
-        {name:"ticker3", value:"val3"}
-      ],
+      tickerName: "",
+      tickers: [],
       tickerExistenceError: false,
+      defaultTickerValues:
+      ["BTC", "DOGE", "BCH", "CHD"],
+      graph:[],
+      selectedTicker: null,
+      graphIntervalId: null,
     };
   },
   methods: {
     //Добавить тикер
     addTicker() {
-      const newTicker = {name: this.ticker, value: "-"};
-      console.log(this.checkTickerExistence(newTicker))
-      if(!this.checkTickerExistence(newTicker)) {
-        this.tickers.push(newTicker);
-        this.tickerExistenceError=false;
-        this.ticker="";
+      
+      const currentTicker = {name: this.tickerName, value: "-", intervalId: null};
+        
+      if(!this.checkTickerExistence(currentTicker)) {
+        this.select(currentTicker);
+        this.selectedTicker=currentTicker;
+        
+        // console.log(`addTicker currentTicker.name=${currentTicker.name}, this.selectedTicker.name=${this.selectedTicker.name}`)
+
+        currentTicker.intervalId = setInterval(async () => {
+          // console.log(`Запуск interval для currentTicker.name=${currentTicker.name}, this.selectedTicker.name=${this.selectedTicker.name}`)
+          const f = await fetch(`https://min-api.cryptocompare.com/data/price?fsym=${currentTicker.name}&tsyms=USD&api_key=dd6523042c04d17f4892e936f12901d3ee837c20088076492bf396fc951d7049`);
+          const data = await f.json();
+          this.tickers.find(t => t.name === currentTicker.name).value = data.USD < 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
+      
+          if(this.selectedTicker && this.selectedTicker.name === currentTicker.name) {
+              this.graph.push(data.USD);
+          }
+        }, 3000);
+        this.tickerName="";
+        this.tickers.push(currentTicker);
+        this.tickerExistenceError = false;
       } else {
-        this.tickerExistenceError=true;
-      } 
+        this.tickerExistenceError = true;
+      }
     },
     //Удалить тикер
     deleteTicker(tickerToRemove) {
+      clearInterval(tickerToRemove.intervalId);
       this.tickers = this.tickers.filter(t => t != tickerToRemove);
+      if(tickerToRemove.name === this.selectedTicker.name) {
+        this.select(null);
+      }
     },
     //Проверить тикер на существование
     checkTickerExistence(checkedTicker) {
@@ -202,7 +220,19 @@ export default {
       } else {
         return false;
       }
-    }
+    },
+    //
+    select(ticker) {
+      this.graph=[];
+      this.selectedTicker = ticker;
+    },
+    //
+    normalizeGraph() {
+      const maxValue = Math.max(...this.graph);
+      const minValue = Math.min(...this.graph);
+      // console.log(this.graph.map(price => 5 + ((price-minValue) * 95) / (maxValue - minValue)))
+      return this.graph.map(price => 5 + ((price-minValue) * 95) / (maxValue - minValue));
+    },
     //
   }
 };
