@@ -67,6 +67,7 @@
             <div class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
                 v-for="t in tickers"
                 :key="t.id"
+                :style="isTickerEqual(t, selectedTicker) ? 'border: 3px solid purple' : ''"
                 @click="select(t)"
                 >
               <div class="px-4 py-5 sm:p-6 text-center">
@@ -161,7 +162,8 @@ export default {
       tickerExistenceError: false,
       defaultTickerValues:
       ["BTC", "DOGE", "BCH", "CHD"],
-      graph:[],
+      graph: [],
+      normalizedGraph: [],
       selectedTicker: null,
       graphIntervalId: null,
     };
@@ -169,37 +171,40 @@ export default {
   methods: {
     //Добавить тикер
     addTicker() {
-      
+      console.log("addTicker()")
       const currentTicker = {name: this.tickerName, value: "-", intervalId: null};
-        
+      console.log(`addTicker(): tickerName=${this.tickerName}, value="-", intervalId=null`)
       if(!this.checkTickerExistence(currentTicker)) {
+        console.log(`addTicker(): !checkTickerExistence() currentTicker.name=${currentTicker.name} TRUE`)
         this.select(currentTicker);
-        this.selectedTicker=currentTicker;
-        
-        // console.log(`addTicker currentTicker.name=${currentTicker.name}, this.selectedTicker.name=${this.selectedTicker.name}`)
-
         currentTicker.intervalId = setInterval(async () => {
-          // console.log(`Запуск interval для currentTicker.name=${currentTicker.name}, this.selectedTicker.name=${this.selectedTicker.name}`)
+          console.log(`setInterval для currentTicker.name=${currentTicker.name}, this.selectedTicker.name=${this.selectedTicker ? this.selectedTicker.name : "(selectedTicker=null)"}`)
           const f = await fetch(`https://min-api.cryptocompare.com/data/price?fsym=${currentTicker.name}&tsyms=USD&api_key=dd6523042c04d17f4892e936f12901d3ee837c20088076492bf396fc951d7049`);
           const data = await f.json();
           this.tickers.find(t => t.name === currentTicker.name).value = data.USD < 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
       
           if(this.selectedTicker && this.selectedTicker.name === currentTicker.name) {
+              console.log(`push ${data.USD} in graph`)
+              console.log("graph:")
+              console.log(this.graph)
               this.graph.push(data.USD);
+              console.log(this.normalizeGraph())
           }
         }, 3000);
         this.tickerName="";
         this.tickers.push(currentTicker);
         this.tickerExistenceError = false;
       } else {
+        console.log(`!checkTickerExistence() currentTicker.name=${currentTicker.name} FALSE`)
         this.tickerExistenceError = true;
       }
     },
     //Удалить тикер
     deleteTicker(tickerToRemove) {
+      console.log(`deleteTicker name=${tickerToRemove.name}, intervalId=${tickerToRemove.intervalId}`)
       clearInterval(tickerToRemove.intervalId);
       this.tickers = this.tickers.filter(t => t != tickerToRemove);
-      if(tickerToRemove.name === this.selectedTicker.name) {
+      if(this.selectedTicker && tickerToRemove.name === this.selectedTicker.name) {
         this.select(null);
       }
     },
@@ -213,9 +218,9 @@ export default {
         }
       });
     },
-    //Проверить тикеры на равенство
+    //Проверить тикеры на равенство по имени
     isTickerEqual(t1, t2) {
-      if(t1.name === t2.name && t1.value === t2.value) {
+      if(t1 && t2 && t1.name === t2.name) {
         return true;
       } else {
         return false;
@@ -223,14 +228,18 @@ export default {
     },
     //
     select(ticker) {
+      console.log(`select: name=${ticker ? ticker.name : "(ticker=null)"}`)
       this.graph=[];
+      this.normalizedGraph=[];
       this.selectedTicker = ticker;
     },
     //
     normalizeGraph() {
+      console.log(`normalizeGraph(): graph.length=${this.graph.length}`)
+      console.log("graph:")
+      console.log(this.graph)
       const maxValue = Math.max(...this.graph);
       const minValue = Math.min(...this.graph);
-      // console.log(this.graph.map(price => 5 + ((price-minValue) * 95) / (maxValue - minValue)))
       return this.graph.map(price => 5 + ((price-minValue) * 95) / (maxValue - minValue));
     },
     //
