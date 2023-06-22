@@ -16,7 +16,8 @@
             <div class="mt-1 relative rounded-md shadow-md">
               <input
                 v-model="tickerName"
-                v-on:keydown.enter="addTicker"
+                v-on:keydown.enter="addTicker(tickerName)"
+                v-on:input="updateSuitableTickerNames"
                 type="text"
                 name="wallet"
                 id="wallet"
@@ -24,23 +25,27 @@
                 placeholder="Например DOGE"
               />
             </div>
-            <div class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap">
+            <div class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap"
+              v-if="suitableTickerNames.length!=0"
+            >
               <span
                 class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
-                @click="e=>tickerName=e.target.innerHTML"
-                v-for="dtv in defaultTickerValues"
+                @click="e=>addTickerButtonHandler(e)"
+                v-for="dtv in suitableTickerNames"
                 :key="dtv.id">
                 {{dtv}}
               </span>
             </div>
             <div class="text-sm text-red-600"
               v-if="tickerExistenceError">Такой тикер уже добавлен</div>
+            <div class="text-sm text-red-600"
+              v-if="tickerNotFoundError">Такой тикер не найден</div>
           </div>
         </div>
         <button
           type="button"
           class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-          @click="addTicker"
+          @click="addTicker(tickerName)"
         >
           <!-- Heroicon name: solid/mail -->
           <svg
@@ -160,22 +165,35 @@ export default {
       tickerName: "",
       tickers: [],
       tickerExistenceError: false,
-      defaultTickerValues:
-      ["BTC", "DOGE", "BCH", "CHD"],
+      tickerNotFoundError: false,
       graph: [],
       normalizedGraph: [],
       selectedTicker: null,
       graphIntervalId: null,
+      tickerNames: [],
+      suitableTickerNames: []
     };
+  },
+  created: function () {
+    this.fetchAllTickers();
   },
   methods: {
     //Добавить тикер
-    addTicker() {
+    addTicker(newTickerName) {
       console.log("addTicker()")
-      const currentTicker = {name: this.tickerName, value: "-", intervalId: null};
-      console.log(`addTicker(): tickerName=${this.tickerName}, value="-", intervalId=null`)
-      if(!this.checkTickerExistence(currentTicker)) {
-        console.log(`addTicker(): !checkTickerExistence() currentTicker.name=${currentTicker.name} TRUE`)
+      const currentTicker = {name: newTickerName, value: "-", intervalId: null};
+      console.log(`addTicker(): tickerName=${newTickerName}, value="-", intervalId=null`)
+      if(this.checkTickerExistence(currentTicker)) {
+        console.log(`!checkTickerExistence() currentTicker.name=${currentTicker.name} FALSE`)
+        this.tickerExistenceError = true;
+        return;
+      } else if(this.checkTickerFoundness(currentTicker)) {
+        console.log(`!checkTickerFoundness() currentTicker.name=${currentTicker.name} FALSE`)
+        this.tickerNotFoundError = true;
+        return;
+      } else {
+        console.log(`checkTickerFoundness() currentTicker.name=${currentTicker.name} FALSE`)
+        console.log(`addTicker(): currentTicker.name=${currentTicker.name} TRUE`)
         this.select(currentTicker);
         currentTicker.intervalId = setInterval(async () => {
           console.log(`setInterval для currentTicker.name=${currentTicker.name}, this.selectedTicker.name=${this.selectedTicker ? this.selectedTicker.name : "(selectedTicker=null)"}`)
@@ -191,12 +209,9 @@ export default {
               console.log(this.normalizeGraph())
           }
         }, 3000);
-        this.tickerName="";
+        this.clearEnteredTickerData();
         this.tickers.push(currentTicker);
-        this.tickerExistenceError = false;
-      } else {
-        console.log(`!checkTickerExistence() currentTicker.name=${currentTicker.name} FALSE`)
-        this.tickerExistenceError = true;
+        this.resetInputErrors();
       }
     },
     //Удалить тикер
@@ -218,6 +233,15 @@ export default {
         }
       });
     },
+    //проверить, находится ли в тикер в стандартном списке тикеров (существует ли он)
+    checkTickerFoundness(checkedTicker) {
+      console.log(`checkedTicker=`);
+      console.log(checkedTicker);
+      if(checkedTicker === null || checkedTicker === "") {
+        return false;
+      }
+      return !this.tickerNames.includes(checkedTicker.name);
+    },
     //Проверить тикеры на равенство по имени
     isTickerEqual(t1, t2) {
       if(t1 && t2 && t1.name === t2.name) {
@@ -226,14 +250,14 @@ export default {
         return false;
       }
     },
-    //
+    //выбрать тикер
     select(ticker) {
       console.log(`select: name=${ticker ? ticker.name : "(ticker=null)"}`)
       this.graph=[];
       this.normalizedGraph=[];
       this.selectedTicker = ticker;
     },
-    //
+    //нормализовать данные графика
     normalizeGraph() {
       console.log(`normalizeGraph(): graph.length=${this.graph.length}`)
       console.log("graph:")
@@ -241,6 +265,52 @@ export default {
       const maxValue = Math.max(...this.graph);
       const minValue = Math.min(...this.graph);
       return this.graph.map(price => 5 + ((price-minValue) * 95) / (maxValue - minValue));
+    },
+
+    //загрузить имена криптовалют
+    async fetchAllTickers() {
+      const f = await fetch(`https://min-api.cryptocompare.com/data/all/coinlist?summary=true`);
+      const jsonObj = await f.json();
+      const data = jsonObj["Data"];
+      for(var key in data) {
+        this.tickerNames.push(data[key]["Symbol"]);
+      }
+    },
+    //обновить список подходящих (начинающихся на то же сочетание букв) названий валют
+    /* TODO можно оптимизировать поиск, например, сделав бинарный поиск в tickerNames */
+    updateSuitableTickerNames() {
+      console.log("updateSuitableTickerNames()");
+      this.suitableTickerNames = [];
+      if(this.tickerName !== "") {
+        for(let i=0; i<this.tickerNames.length; i++) {
+          if(this.suitableTickerNames.length == 4) {
+            break;
+          }
+          if(this.tickerNames[i].toLowerCase().startsWith(this.tickerName.toLowerCase())) {
+            this.suitableTickerNames.push(this.tickerNames[i]);
+          }
+        }
+      }
+      this.resetInputErrors();
+      console.log(this.suitableTickerNames);
+    },
+    //обработчик нажатия кнопки добавления тикера
+    addTickerButtonHandler(e) {
+      console.log("addTickerButtonHandler()");
+      this.tickerName=e.target.innerHTML;
+      this.addTicker(this.tickerName);
+    },
+    //очистить данные, связанные с введенным тикером
+    clearEnteredTickerData() {
+      console.log("clearEnteredTickerData()");
+      this.tickerName = "";
+      this.suitableTickerNames = "";
+    },
+    //сбросить ошибки валидации инпута тикера (сделать false)
+    resetInputErrors() {
+      console.log("resetInputErrors()");
+      this.tickerNotFoundError = false;
+      this.tickerExistenceError = false;
     },
     //
   }
