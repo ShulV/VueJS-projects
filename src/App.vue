@@ -178,6 +178,9 @@ export default {
   },
   created: function () {
     this.fetchAllTickers();
+    this.initTickersByLocalStorage();
+    this.subscribeAllTickersToUpdates();
+
   },
   methods: {
     //Добавить тикер
@@ -197,23 +200,11 @@ export default {
         console.log(`checkTickerFoundness() currentTicker.name=${currentTicker.name} FALSE`)
         console.log(`addTicker(): currentTicker.name=${currentTicker.name} TRUE`)
         this.select(currentTicker);
-        currentTicker.intervalId = setInterval(async () => {
-          console.log(`setInterval для currentTicker.name=${currentTicker.name}, this.selectedTicker.name=${this.selectedTicker ? this.selectedTicker.name : "(selectedTicker=null)"}`)
-          const f = await fetch(`https://min-api.cryptocompare.com/data/price?fsym=${currentTicker.name}&tsyms=USD&api_key=dd6523042c04d17f4892e936f12901d3ee837c20088076492bf396fc951d7049`);
-          const data = await f.json();
-          this.tickers.find(t => t.name === currentTicker.name).value = data.USD < 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
-      
-          if(this.selectedTicker && this.selectedTicker.name === currentTicker.name) {
-              console.log(`push ${data.USD} in graph`)
-              console.log("graph:")
-              console.log(this.graph)
-              this.graph.push(data.USD);
-              console.log(this.normalizeGraph())
-          }
-        }, 3000);
+        this.subscribeToUpdates(currentTicker);
         this.clearEnteredTickerData();
         this.tickers.push(currentTicker);
         this.resetInputErrors();
+        this.updateLocalStorageTickers();
       }
     },
     //Удалить тикер
@@ -224,6 +215,7 @@ export default {
       if(this.selectedTicker && tickerToRemove.name === this.selectedTicker.name) {
         this.select(null);
       }
+      this.updateLocalStorageTickers();
     },
     //Проверить тикер на существование
     checkTickerExistence(checkedTicker) {
@@ -316,7 +308,50 @@ export default {
       this.tickerNotFoundError = false;
       this.tickerExistenceError = false;
     },
+    //обновить данные добавленных тикеров в localstorage
+    updateLocalStorageTickers() {
+      console.log(`updateLocalStorageTickers(): tickers=`);
+      console.log(this.tickers);
+      const tickersForLocalStorage = this.tickers.map(t=>{
+        t.intervalId=null;
+        t.value="";
+        return t;
+      });
+      console.log("tickersForLocalStorage");
+      console.log(tickersForLocalStorage);
+      localStorage.setItem("added-tickers", JSON.stringify(tickersForLocalStorage));
+    },
+    //инициализировать список тикеров из localstorage
+    initTickersByLocalStorage() {
+      console.log("initTickersByLocalStorage()");
+      if(localStorage.getItem("added-tickers")) {
+        this.tickers = JSON.parse(localStorage.getItem("added-tickers"));
+      }
+    },
+    //включить обновление тикера в интервале
+    subscribeToUpdates(ticker) {
+      console.log(`subscribeToUpdates(): ticker=${ticker}`)
+      ticker.intervalId = setInterval(async () => {
+          console.log(`setInterval для currentTicker.name=${ticker.name}, this.selectedTicker.name=${this.selectedTicker ? this.selectedTicker.name : "(selectedTicker=null)"}`)
+          const f = await fetch(`https://min-api.cryptocompare.com/data/price?fsym=${ticker.name}&tsyms=USD&api_key=dd6523042c04d17f4892e936f12901d3ee837c20088076492bf396fc951d7049`);
+          const data = await f.json();
+          this.tickers.find(t => t.name === ticker.name).value = data.USD < 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
+      
+          if(this.selectedTicker && this.selectedTicker.name === ticker.name) {
+              console.log(`push ${data.USD} in graph`)
+              console.log("graph:")
+              console.log(this.graph)
+              this.graph.push(data.USD);
+              console.log(this.normalizeGraph())
+          }
+        }, 3000);
+    },
+    //включить обновление в интервале для всех тикеров 
+    subscribeAllTickersToUpdates() {
+      this.tickers.forEach(t=>this.subscribeToUpdates(t));
+    },
     //
+
   }
 };
 </script>
