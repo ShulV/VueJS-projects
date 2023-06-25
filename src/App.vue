@@ -313,9 +313,7 @@ export default {
       console.log(`updateLocalStorageTickers(): tickers=`);
       console.log(this.tickers);
       const tickersForLocalStorage = this.tickers.map(t=>{
-        t.intervalId=null;
-        t.value="";
-        return t;
+        return {"name":t.name, "intervalId":null, "value":""};
       });
       console.log("tickersForLocalStorage");
       console.log(tickersForLocalStorage);
